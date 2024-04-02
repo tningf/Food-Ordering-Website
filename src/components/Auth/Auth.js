@@ -1,12 +1,12 @@
 import React from 'react';
 
-function CartPage() {
+function Auth() {
   return (
     <div>
-      <h1>CartPage</h1>
+      <h1>Trang Chủ</h1>
       <p>Xin chào! Đây là trang chủ của chúng tôi.</p>
     </div>
   );
 }
 
-export default CartPage;
+export default Auth;

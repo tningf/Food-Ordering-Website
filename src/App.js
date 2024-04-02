@@ -1,7 +1,7 @@
 import './App.css';
-import Homepage from './component/Homepage/Homepage';
-import AuthPage from './component/AuthPage/AuthPage';
-import CartPage from './component/CartPage/CartPage';
+import Home from './components/Home/Home';
+import Auth from './components/Auth/Auth';
+import Cart from './components/Cart/Cart';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
 function App() {
@@ -9,9 +9,9 @@ function App() {
     <Router>
       <div>
         <Routes>
-          <Route path="/" element={<Homepage />} />
-          <Route path="/login" element={<AuthPage />} />
-          <Route path="/cart" element={<CartPage />} />
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Auth />} />
+          <Route path="/cart" element={<Cart />} />
         </Routes>
       </div>
     </Router>

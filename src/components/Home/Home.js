@@ -1,6 +1,6 @@
 import React from 'react';
 
-function AuthPage() {
+function Home() {
   return (
     <div>
       <h1>Trang Chủ</h1>
@@ -9,4 +9,4 @@ function AuthPage() {
   );
 }
 
-export default AuthPage;
+export default Home;
