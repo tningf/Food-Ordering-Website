@@ -3,16 +3,24 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"time"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 )
 
 var db *sql.DB
+var jwtKey = []byte("secret_key")
 
+type Credentials struct {
+	UserName string `json:"UserName"`
+	Password string `json:"Password"`
+}
 type User struct {
 	ID       int    `json:"ID"`
 	Name     string `json:"Name"`
@@ -24,11 +32,56 @@ type User struct {
 	Password string `json:"Password"`
 }
 
+func createJWTKey(userName string) (string, error) {
+	claim := jwt.MapClaims{
+		"user_Name": userName,
+		"exp":       time.Now().Add(time.Hour * 24).Unix(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodES256, claim)
+	tokenString, err := token.SignedString(jwtKey)
+	if err != nil {
+		return "", err
+	}
+	return tokenString, nil
+}
+
+func loginUser(w http.ResponseWriter, r *http.Request) {
+	var credentitals Credentials
+
+	err := json.NewDecoder(r.Body).Decode(&credentitals)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	checkPassWord, err := db.Query("SELECT password FROM users WHERE email = $1", credentitals.UserName)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var check string
+	if checkPassWord.Next() {
+		err := checkPassWord.Scan(&check)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	err1 := bcrypt.CompareHashAndPassword([]byte(check), []byte(credentitals.Password))
+	if err1 != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, "Incorrect password")
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintln(w, "Login successful")
+}
+
 func checkEmailUser(user User) (int, error) {
 	if len(user.Email) <= 10 {
 		return 0, nil
 	}
-	check_Email, err := db.Query("SELECT Email FROM users WHERE Email = $1", user.Email)
+	check_Email, err := db.Query("SELECT email FROM users WHERE email = $1", user.Email)
 	if err != nil {
 		return 0, err
 	}
@@ -104,7 +157,7 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	err = db.QueryRow("INSERT INTO users (name, age, gender, email, password) VALUES ($1, $2, $3, $4, $5) RETURNING id", user.Name, user.Age, user.Gender, user.Email, hashedPassword).Scan(&user.ID)
+	_, err = db.Exec("INSERT INTO users (name, age, gender, email, password) VALUES ($1, $2, $3, $4, $5)", user.Name, user.Age, user.Gender, user.Email, hashedPassword)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -122,6 +175,7 @@ func main() {
 	defer db.Close()
 	r := mux.NewRouter()
 	r.HandleFunc("/users", createUser).Methods("POST")
+	r.HandleFunc("/login", loginUser)
 	http.Handle("/", r)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
