@@ -1,37 +1,35 @@
+
 import React, { useState } from 'react';
 import axios from 'axios';
-
 const Auth = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  const handleLogin = () => {
-    // Send email and password to the backend for authentication
-    
-    axios.post('http://localhost:8080/api/login', { email, password })
-      .then(response => {
-        // Handle successful login
-        console.log(response.data);
-      })
-      .catch(error => {
-        // Handle login error
-        console.error('There was an error!', error);
-      });
+  const handleEmailChange = (e) => {
+    setEmail(e.target.value);
+  };
+
+  const handlePasswordChange = (e) => {
+    setPassword(e.target.value);
+  };
+
+  const handleSubmit = (e) => {
+
   };
 
   return (
     <div>
       <h2>Login</h2>
-      <form>
+      <form onSubmit={handleSubmit}>
         <div>
           <label>Email:</label>
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} />
+          <input type="email" value={email} onChange={handleEmailChange} />
         </div>
         <div>
           <label>Password:</label>
-          <input type="password" value={password} onChange={e => setPassword(e.target.value)} />
+          <input type="password" value={password} onChange={handlePasswordChange} />
         </div>
-        <button type="button" onClick={handleLogin}>Login</button>
+        <button type="submit">Login</button>
       </form>
     </div>
   );
