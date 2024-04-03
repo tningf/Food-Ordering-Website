@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
@@ -166,7 +167,7 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	connStr := "user=postgres password=admin123 dbname=Food sslmode=disable"
+	connStr := "user=postgres password=a dbname=DB sslmode=disable"
 	var err error
 	db, err = sql.Open("postgres", connStr)
 	if err != nil {
@@ -177,5 +178,12 @@ func main() {
 	r.HandleFunc("/users", createUser).Methods("POST")
 	r.HandleFunc("/login", loginUser)
 	http.Handle("/", r)
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	//log.Fatal(http.ListenAndServe(":8080", nil))
+
+	// CORS
+	http.ListenAndServe(":8080", handlers.CORS(
+		handlers.AllowedOrigins([]string{"*"}),
+		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
+		handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}),
+	)(r))
 }
