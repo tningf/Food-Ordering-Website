@@ -98,6 +98,17 @@ func loginUser(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "Login successful")
 }
 
+func logout(w http.ResponseWriter, r *http.Request) {
+	cookies := r.Cookies()
+
+	for _, cookie := range cookies {
+		cookie.MaxAge = -1
+		http.SetCookie(w, cookie)
+	}
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintln(w, "Logout Successful")
+}
+
 func checkEmailUser(user User) (int, error) {
 	if len(user.Email) <= 10 {
 		return 0, nil
@@ -263,11 +274,34 @@ func updateProduct(w http.ResponseWriter, r *http.Request) {
 
 	claims := tkn.Claims.(jwt.MapClaims)
 
-	fmt.Fprintln(w, claims["user_Name"])
+	if claims["role"] != "admin" {
+		fmt.Fprintln(w, "You are not admin")
+		return
+	}
+	vars := mux.Vars(r)
+	productID := vars["id"]
+
+	var update_Product Product
+
+	err1 := json.NewDecoder(r.Body).Decode(&update_Product)
+	if err1 != nil {
+		http.Error(w, err1.Error(), http.StatusBadRequest)
+		return
+	}
+
+	_, err2 := db.Exec("UPDATE product SET name = $1 , image_url = $2 , price = ? WHERE id = ?", update_Product.Name, update_Product.Image_url, update_Product.Price, productID)
+
+	if err2 != nil {
+		http.Error(w, err2.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintln(w, "Update Successful")
 }
 
 func main() {
-	connStr := "user=postgres password=a dbname=DB sslmode=disable"
+	connStr := "user=postgres password=admin123 dbname=Food sslmode=disable"
 	var err error
 	db, err = sql.Open("postgres", connStr)
 	if err != nil {
@@ -275,11 +309,12 @@ func main() {
 	}
 	defer db.Close()
 	r := mux.NewRouter()
-	r.HandleFunc("/users", createUser).Methods("POST")
+	r.HandleFunc("/register", createUser).Methods("POST")
+	r.HandleFunc("/login", loginUser).Methods("POST")
+	r.HandleFunc("/logout", logout).Methods("POST")
 	r.HandleFunc("/users/{id}", updateUser).Methods("PUT")
 	r.HandleFunc("/product", getProduct).Methods("GET")
-	r.HandleFunc("/product", updateProduct).Methods("PUT")
-	r.HandleFunc("/login", loginUser)
+	r.HandleFunc("/product/{id}", updateProduct).Methods("PUT")
 	http.Handle("/", r)
 	http.ListenAndServe(":8080", handlers.CORS(
 		handlers.AllowedOrigins([]string{"*"}),
