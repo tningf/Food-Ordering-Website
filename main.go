@@ -267,7 +267,7 @@ func updateProduct(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	connStr := "user=postgres password=admin123 dbname=Food sslmode=disable"
+	connStr := "user=postgres password=a dbname=DB sslmode=disable"
 	var err error
 	db, err = sql.Open("postgres", connStr)
 	if err != nil {
