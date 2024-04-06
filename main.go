@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
@@ -17,10 +18,6 @@ import (
 var db *sql.DB
 var jwtKey = []byte("secret_key")
 
-type Credentials struct {
-	UserName string `json:"UserName"`
-	Password string `json:"Password"`
-}
 type User struct {
 	ID       int    `json:"ID"`
 	Name     string `json:"Name"`
@@ -32,12 +29,21 @@ type User struct {
 	Password string `json:"Password"`
 }
 
-func createJWTKey(userName string) (string, error) {
+type Product struct {
+	ID        int    `json:"ID"`
+	Name      string `json:"Name"`
+	Image_url string `json:"Image"`
+	Price     string `json:"Price"`
+	Create_By int    `json:"Create_UserID"`
+}
+
+func createJWTKey(userName string, expirationTime time.Time, Role string) (string, error) {
 	claim := jwt.MapClaims{
 		"user_Name": userName,
-		"exp":       time.Now().Add(time.Hour * 24).Unix(),
+		"role":      Role,
+		"exp":       expirationTime,
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodES256, claim)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claim)
 	tokenString, err := token.SignedString(jwtKey)
 	if err != nil {
 		return "", err
@@ -46,14 +52,15 @@ func createJWTKey(userName string) (string, error) {
 }
 
 func loginUser(w http.ResponseWriter, r *http.Request) {
-	var credentitals Credentials
+
+	var credentitals User
 
 	err := json.NewDecoder(r.Body).Decode(&credentitals)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	checkPassWord, err := db.Query("SELECT password FROM users WHERE email = $1", credentitals.UserName)
+	checkPassWord, err := db.Query("SELECT password, role FROM users WHERE email = $1", credentitals.Email)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -61,7 +68,7 @@ func loginUser(w http.ResponseWriter, r *http.Request) {
 	}
 	var check string
 	if checkPassWord.Next() {
-		err := checkPassWord.Scan(&check)
+		err := checkPassWord.Scan(&check, &credentitals.Role)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -73,6 +80,20 @@ func loginUser(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "Incorrect password")
 		return
 	}
+
+	expirationTime := time.Now().Add(time.Hour * 24)
+	accessToken, err := createJWTKey(credentitals.Email, expirationTime, credentitals.Role)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	cookie := http.Cookie{
+		Name:    "token",
+		Value:   accessToken,
+		Expires: expirationTime,
+	}
+	http.SetCookie(w, &cookie)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintln(w, "Login successful")
 }
@@ -165,6 +186,86 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(user)
 }
 
+func updateUser(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	userID := vars["id"]
+	var update_User User
+	err := json.NewDecoder(r.Body).Decode(&update_User)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	hashPassWord, err := bcrypt.GenerateFromPassword([]byte(update_User.Password), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_, err1 := db.Exec("UPDATE users SET name = $1, age = $2, gender = $3, password = $4 WHERE id = $5", update_User.Name, update_User.Age, update_User.Gender, hashPassWord, userID)
+	if err1 != nil {
+		http.Error(w, err1.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "Update Successful")
+}
+
+func getProduct(w http.ResponseWriter, r *http.Request) {
+
+	getDatabaseProduct, err := db.Query("SELECT * FROM product")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var listProduct []Product
+
+	for getDatabaseProduct.Next() {
+		var get_Product Product
+		err := getDatabaseProduct.Scan(&get_Product.ID, &get_Product.Name, &get_Product.Image_url, &get_Product.Price, &get_Product.Create_By)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		listProduct = append(listProduct, get_Product)
+	}
+	jsonData, _ := json.MarshalIndent(listProduct, "", "  ")
+	w.Write(jsonData)
+}
+
+func updateProduct(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("token")
+	if err != nil {
+		if err == http.ErrNoCookie {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	tonkenStr := cookie.Value
+
+	tkn, err := jwt.Parse(tonkenStr, func(t *jwt.Token) (interface{}, error) {
+		return jwtKey, nil
+	})
+
+	if err != nil {
+		if err == jwt.ErrSignatureInvalid {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+	}
+
+	if !tkn.Valid {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	claims := tkn.Claims.(jwt.MapClaims)
+
+	fmt.Fprintln(w, claims["user_Name"])
+}
+
 func main() {
 	connStr := "user=postgres password=admin123 dbname=Food sslmode=disable"
 	var err error
@@ -175,7 +276,14 @@ func main() {
 	defer db.Close()
 	r := mux.NewRouter()
 	r.HandleFunc("/users", createUser).Methods("POST")
+	r.HandleFunc("/users/{id}", updateUser).Methods("PUT")
+	r.HandleFunc("/product", getProduct).Methods("GET")
+	r.HandleFunc("/product", updateProduct).Methods("PUT")
 	r.HandleFunc("/login", loginUser)
 	http.Handle("/", r)
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	http.ListenAndServe(":8080", handlers.CORS(
+		handlers.AllowedOrigins([]string{"*"}),
+		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
+		handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}),
+	)(r))
 }
